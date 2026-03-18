@@ -1,0 +1,20 @@
+# Core API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+
+# OpenAI
+openai>=1.54.0
+
+# Data validation
+pydantic>=2.9.0
+
+# File extraction
+python-docx>=1.1.0
+PyMuPDF>=1.24.0
+
+# HTTP client (verification engine)
+httpx>=0.27.0
+
+# Env management
+python-dotenv>=1.0.0
