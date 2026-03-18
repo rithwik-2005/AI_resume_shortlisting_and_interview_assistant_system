@@ -190,7 +190,6 @@ def _extract_pdf(data: bytes) -> str:
 def _extract_docx(data: bytes) -> str:
     try:
         from docx import Document
-        from docx.opc.constants import RELATIONSHIP_TYPE as RT
         import zipfile
         from xml.etree import ElementTree as ET
 
