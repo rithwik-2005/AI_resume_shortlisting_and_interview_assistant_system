@@ -64,6 +64,8 @@ class ParsedResume(BaseModel):
 
     github_url: Optional[str] = None
     linkedin_url: Optional[str] = None
+    leetcode_url: Optional[str] = None           # new: LeetCode profile
+    other_links: list[str] = Field(default_factory=list)  # new: HackerRank, Kaggle etc.
 
     raw_text: str = ""
 

@@ -239,6 +239,8 @@ def _verify_linkedin(url: Optional[str], resume: ParsedResume) -> Optional[Linke
 def verify_candidate(resume: ParsedResume) -> VerificationResult:
     """
     Verify GitHub and LinkedIn claims from the parsed resume.
+    Also logs all other profile links found (LeetCode, HackerRank etc.)
+    so they appear in the verification summary even if not deeply checked.
 
     Parameters
     ----------
@@ -249,8 +251,15 @@ def verify_candidate(resume: ParsedResume) -> VerificationResult:
     VerificationResult
     """
     logger.info("Verifying claims for: %s", resume.candidate_name)
+    logger.info(
+        "Profile links found — GitHub: %s | LinkedIn: %s | LeetCode: %s | Other: %s",
+        resume.github_url or "none",
+        resume.linkedin_url or "none",
+        resume.leetcode_url or "none",
+        resume.other_links or [],
+    )
 
-    github = _verify_github(resume.github_url)
+    github   = _verify_github(resume.github_url)
     linkedin = _verify_linkedin(resume.linkedin_url, resume)
 
     scores: list[float] = []
@@ -277,7 +286,19 @@ def verify_candidate(resume: ParsedResume) -> VerificationResult:
             github.summary if github else None,
             linkedin.summary if linkedin else None,
         ] if p
-    ] or ["No public profiles were provided for verification."]
+    ]
+
+    # Surface LeetCode and other links in the summary even if not deeply checked
+    extra_links = []
+    if resume.leetcode_url:
+        extra_links.append(f"LeetCode: {resume.leetcode_url}")
+    for link in (resume.other_links or []):
+        extra_links.append(f"Profile: {link}")
+    if extra_links:
+        summary_parts.append("Additional profiles found: " + " | ".join(extra_links))
+
+    if not summary_parts:
+        summary_parts = ["No public profiles were provided for verification."]
 
     return VerificationResult(
         candidate_name=resume.candidate_name,
