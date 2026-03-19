@@ -1,1 +1,0 @@
-# AI_resume_shortlisting_and_interview_assistant_system
