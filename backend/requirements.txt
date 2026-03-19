@@ -2,6 +2,7 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
+aiofiles>=23.2.1          # required by FastAPI StaticFiles for frontend serving
 
 # OpenAI
 openai>=1.54.0

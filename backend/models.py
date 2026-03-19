@@ -28,21 +28,21 @@ class Tier(str, Enum):
 # ──────────────────────────────────────────────
 
 class WorkExperience(BaseModel):
-    role: str
-    company: str
-    duration: str
+    role: str = ""
+    company: str = ""
+    duration: str = ""          # was required str — LLM sometimes returns null
     bullets: list[str] = Field(default_factory=list)
 
 
 class Project(BaseModel):
-    name: str
+    name: str = ""
     description: str = ""
     stack: list[str] = Field(default_factory=list)
 
 
 class Education(BaseModel):
-    degree: str
-    institution: str
+    degree: str = ""
+    institution: str = ""
     year: str = ""
 
 
@@ -64,8 +64,8 @@ class ParsedResume(BaseModel):
 
     github_url: Optional[str] = None
     linkedin_url: Optional[str] = None
-    leetcode_url: Optional[str] = None           # new: LeetCode profile
-    other_links: list[str] = Field(default_factory=list)  # new: HackerRank, Kaggle etc.
+    leetcode_url: Optional[str] = None
+    other_links: list[str] = Field(default_factory=list)   # Kaggle, HackerRank, etc.
 
     raw_text: str = ""
 
@@ -113,6 +113,7 @@ class ScoringResult(BaseModel):
 
 class GitHubVerification(BaseModel):
     profile_found: bool = False
+    unreachable: bool = False          # True when network/timeout error
     username: Optional[str] = None
     public_repos: int = 0
     followers: int = 0
@@ -126,7 +127,44 @@ class GitHubVerification(BaseModel):
 
 class LinkedInVerification(BaseModel):
     profile_found: bool = False
+    blocked: bool = False              # True when LinkedIn returns 999 or network error
+    server_blocked: bool = False       # True when server can't reach but URL is valid
     profile_url: Optional[str] = None
+    flags: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class LeetCodeVerification(BaseModel):
+    """Stats pulled from LeetCode public GraphQL API."""
+    profile_found: bool = False
+    server_blocked: bool = False       # True when API unreachable server-side
+    username: Optional[str] = None
+    profile_url: Optional[str] = None
+    total_solved: int = 0
+    easy_solved: int = 0
+    medium_solved: int = 0
+    hard_solved: int = 0
+    global_ranking: Optional[int] = None
+    activity_score: float = Field(ge=0, le=100, default=0.0)
+    platform_description: str = (
+        "LeetCode is a competitive programming platform used to practise "
+        "data structures and algorithms. Solving problems here demonstrates "
+        "coding proficiency and problem-solving ability."
+    )
+    flags: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class OtherProfileVerification(BaseModel):
+    """Lightweight verification for Kaggle, HackerRank, CodeChef, etc."""
+    platform: str
+    url: str
+    username: Optional[str] = None
+    profile_found: bool = False
+    server_blocked: bool = False       # True when server can't reach but URL is from resume
+    activity_score: float = Field(ge=0, le=100, default=0.0)
+    platform_description: str = ""
+    highlights: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     summary: str = ""
 
@@ -135,6 +173,8 @@ class VerificationResult(BaseModel):
     candidate_name: str
     github: Optional[GitHubVerification] = None
     linkedin: Optional[LinkedInVerification] = None
+    leetcode: Optional[LeetCodeVerification] = None
+    other_profiles: list[OtherProfileVerification] = Field(default_factory=list)
     overall_authenticity_score: float = Field(ge=0, le=100, default=50.0)
     red_flags: list[str] = Field(default_factory=list)
     verification_summary: str = ""

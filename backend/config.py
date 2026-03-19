@@ -24,7 +24,7 @@ load_dotenv(dotenv_path=_env_path, override=False)
 @dataclass(frozen=True)
 class Settings:
     # ------------------------------------------------------------------ #
-    # OpenAI
+    # OpenAI (required)
     # ------------------------------------------------------------------ #
     openai_api_key: str = field(
         default_factory=lambda: os.getenv("OPENAI_API_KEY", "")
@@ -39,7 +39,18 @@ class Settings:
     )
 
     # ------------------------------------------------------------------ #
-    # GitHub verification (optional but recommended)
+    # GitHub token (OPTIONAL)
+    #
+    # Without a token : GitHub API allows 60  requests / hour.
+    # With a token    : GitHub API allows 5000 requests / hour.
+    #
+    # The system works perfectly without it — the verification engine
+    # automatically skips adding the Authorization header when this is empty.
+    #
+    # To get a free token (no special permissions needed):
+    #   https://github.com/settings/tokens  → Generate new token (classic)
+    #   → set any expiry → check NO scopes → Generate
+    # Then add:  GITHUB_TOKEN=ghp_...  to backend/.env
     # ------------------------------------------------------------------ #
     github_token: str = field(
         default_factory=lambda: os.getenv("GITHUB_TOKEN", "")
@@ -73,13 +84,22 @@ class Settings:
 
 settings = Settings()
 
-# ── Startup sanity check ───────────────────────────────────────────────────
+# ── Startup checks ─────────────────────────────────────────────────────────
+import warnings   # noqa: E402 (import after settings instantiation is intentional)
+
 if not settings.openai_api_key:
-    import warnings
     warnings.warn(
         "\n\n"
         "  ⚠️  OPENAI_API_KEY is not set!\n"
         f"  Expected .env file at: {_env_path}\n"
-        "  Create it with:  OPENAI_API_KEY=sk-...\n",
+        "  Create it and add:  OPENAI_API_KEY=sk-...\n",
         stacklevel=2,
+    )
+
+if not settings.github_token:
+    # This is normal — just informational, not a warning
+    import logging
+    logging.getLogger(__name__).info(
+        "GITHUB_TOKEN not set — GitHub API rate limit: 60 req/hr. "
+        "Add GITHUB_TOKEN to backend/.env to raise it to 5000 req/hr."
     )

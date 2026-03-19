@@ -3,6 +3,8 @@ main.py — FastAPI application entry point.
 
 Routes
 ------
+GET  /                      Serves frontend index.html
+GET  /api/health            Liveness probe
 POST /api/evaluate          Full pipeline  (multipart file upload)
 POST /api/evaluate/stream   Full pipeline, SSE streaming (multipart file upload)
 POST /api/batch             Batch evaluate N resumes vs 1 JD (multipart)
@@ -10,7 +12,9 @@ POST /api/parse             Parse files only
 POST /api/score             Score pre-parsed resume vs JD (JSON)
 POST /api/verify            Verify social claims (JSON)
 POST /api/questions         Generate interview plan (JSON)
-GET  /api/health            Liveness probe
+
+Frontend is served directly by FastAPI — no nginx or separate
+container needed. This makes Docker deployment a single container.
 
 All file-upload endpoints accept multipart/form-data.
 Accepted file formats: PDF · DOCX · DOC · TXT  (max 10 MB each)
@@ -19,7 +23,7 @@ Accepted file formats: PDF · DOCX · DOC · TXT  (max 10 MB each)
 from __future__ import annotations
 
 # ── MUST come right after __future__: load .env before any module reads
-# os.getenv().  config.py instantiates Settings() at import time, so
+# os.getenv(). config.py instantiates Settings() at import time, so
 # the env vars must already be in os.environ by the time it is imported.
 import os
 from pathlib import Path
@@ -33,29 +37,8 @@ from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-
-from config import settings
-from models import (
-    InterviewPlan,
-    JobDescription,
-    ParsedResume,
-    PipelineResult,
-    ScoringResult,
-    VerificationResult,
-)
-from modules.batch_evaluator import BatchResult, batch_evaluate
-from modules.file_extractor import extract_text
-from modules.parser import parse_jd, parse_resume
-from modules.question_generator import generate_interview_plan
-from modules.scoring_engine import score_candidate
-from modules.streamer import pipeline_stream
-from modules.verification_engine import verify_candidate
-
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config import settings
@@ -107,6 +90,34 @@ app.add_middleware(
 )
 
 MAX_BYTES = settings.max_file_size_mb * 1024 * 1024
+
+# ──────────────────────────────────────────────
+# Frontend — served directly by FastAPI
+# Works in Docker (one container) and locally.
+# ──────────────────────────────────────────────
+
+# Path to frontend folder — works both locally and inside Docker container
+_FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+if _FRONTEND_DIR.exists():
+    # Serve index.html at "/"
+    @app.get("/", include_in_schema=False)
+    def serve_index():
+        return FileResponse(str(_FRONTEND_DIR / "index.html"))
+
+    # Serve all other static files (CSS, JS, images if any)
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(_FRONTEND_DIR)),
+        name="static",
+    )
+    logger.info("Frontend served from: %s", _FRONTEND_DIR)
+else:
+    logger.warning(
+        "Frontend folder not found at %s — UI will not be available. "
+        "Open frontend/index.html directly in your browser instead.",
+        _FRONTEND_DIR,
+    )
 
 
 # ──────────────────────────────────────────────
@@ -300,7 +311,6 @@ async def evaluate_stream(
     """
     Full pipeline with Server-Sent Events streaming.
     The client receives live JSON progress events as each step completes.
-
     Event types: progress | result | done | error
     """
     resume_text = await _file_to_text(resume_file)
@@ -326,7 +336,6 @@ async def batch_endpoint(
 ):
     """
     Rank multiple candidates against one Job Description.
-
     - Accepts 1–50 resume files in a single request.
     - All resumes are scored in parallel (max_workers threads).
     - Returns a leaderboard sorted by composite score.

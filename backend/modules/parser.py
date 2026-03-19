@@ -228,16 +228,23 @@ def parse_resume(raw_text: str) -> ParsedResume:
     )
 
     # ── Normalise nested objects into Pydantic models ─────────────────────
+    # Replace any None values with empty strings so str fields don't fail
+    def _clean(d: dict, defaults: dict) -> dict:
+        return {k: (v if v is not None else defaults.get(k, "")) for k, v in d.items()}
+
     data["work_experience"] = [
-        WorkExperience(**w) if isinstance(w, dict) else w
+        WorkExperience(**_clean(w, {"role": "", "company": "", "duration": ""}))
+        if isinstance(w, dict) else w
         for w in data.get("work_experience", [])
     ]
     data["projects"] = [
-        Project(**p) if isinstance(p, dict) else p
+        Project(**_clean(p, {"name": "", "description": ""}))
+        if isinstance(p, dict) else p
         for p in data.get("projects", [])
     ]
     data["education"] = [
-        Education(**e) if isinstance(e, dict) else e
+        Education(**_clean(e, {"degree": "", "institution": ""}))
+        if isinstance(e, dict) else e
         for e in data.get("education", [])
     ]
     data["raw_text"] = raw_text

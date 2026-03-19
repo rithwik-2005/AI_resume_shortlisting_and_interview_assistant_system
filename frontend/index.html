@@ -509,8 +509,12 @@ header{padding:32px 0 24px;border-bottom:1px solid var(--border);display:flex;al
 let currentResult = null;
 let currentBatchResult = null;
 let appMode = 'single'; // 'single' | 'batch'
-const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-  ? 'http://localhost:8000' : '';
+
+// API base URL:
+// - In Docker or when opened via http://localhost:8000 → use empty string
+//   so fetch('/api/...') hits the same origin (FastAPI serves everything).
+// - When opened as file:// directly → fall back to localhost:8000 explicitly.
+const API = (location.protocol === 'file:') ? 'http://localhost:8000' : '';
 
 // ────────────────────────────────────────────────────
 // Navigation
@@ -836,6 +840,7 @@ function renderVerification(result) {
   const v = result.verification;
   const scoreColor = v.overall_authenticity_score >= 70 ? 'var(--green)' : v.overall_authenticity_score >= 45 ? 'var(--amber)' : 'var(--red)';
 
+  // ── Overall authenticity bar ──────────────────────────────────────────
   let html = `
     <div class="card" style="margin-bottom:14px;">
       <div class="card-head">
@@ -843,43 +848,176 @@ function renderVerification(result) {
         <span style="font-family:var(--font-m);color:${scoreColor};font-size:18px;font-weight:700;">${v.overall_authenticity_score}/100</span>
       </div>
       <div class="card-body">
-        <div class="auth-bar"><div class="auth-fill" style="width:${v.overall_authenticity_score}%;background:${scoreColor};"></div></div>
-        ${v.red_flags.length
+        <div class="auth-bar"><div class="auth-fill" style="width:${v.overall_authenticity_score}%;background:${scoreColor};transition:width 1s ease;"></div></div>
+        ${v.red_flags && v.red_flags.length
           ? `<div class="flag-list">${v.red_flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`
           : `<p style="color:var(--green);font-size:13px;margin-top:10px;">✓ No red flags detected</p>`}
       </div>
     </div>
     <div class="verify-grid">`;
 
+  // ── GitHub ─────────────────────────────────────────────────────────────
   const g = v.github;
-  if (g) html += `
+  if (g) {
+    const gIcon = g.profile_found ? '✓' : (g.unreachable ? '⏱' : '✗');
+    const gColor = g.profile_found ? 'var(--green)' : g.unreachable ? 'var(--amber)' : 'var(--red)';
+    html += `
     <div class="vcard">
       <div class="vcard-icon">🐙</div>
-      <div class="vcard-title">GitHub ${g.profile_found?'✓':'✗'}</div>
+      <div class="vcard-title" style="color:${gColor}">GitHub ${gIcon}</div>
       ${g.profile_found ? `
-        <div class="stat-row"><span class="stat-label">Username</span><span class="stat-val">@${g.username}</span></div>
+        <div class="stat-row"><span class="stat-label">Username</span><span class="stat-val"><a href="https://github.com/${g.username}" target="_blank" style="color:var(--accent);text-decoration:none;">@${g.username}</a></span></div>
         <div class="stat-row"><span class="stat-label">Public Repos</span><span class="stat-val">${g.public_repos}</span></div>
         <div class="stat-row"><span class="stat-label">Followers</span><span class="stat-val">${g.followers}</span></div>
         <div class="stat-row"><span class="stat-label">Commits (30d)</span><span class="stat-val">${g.recent_commits_30d}</span></div>
         <div class="stat-row"><span class="stat-label">Account Age</span><span class="stat-val">${(g.account_age_days/365).toFixed(1)}y</span></div>
-        <div class="stat-row"><span class="stat-label">Activity Score</span><span class="stat-val" style="color:var(--accent)">${g.activity_score}/100</span></div>
-        ${g.top_languages.length?`<div class="stat-row"><span class="stat-label">Top Languages</span><span class="stat-val">${g.top_languages.slice(0,3).join(', ')}</span></div>`:''}
-      ` : `<p style="color:var(--red);font-size:12px;">${(g.flags||[]).join(' · ')}</p>`}
-      ${g.flags.length?`<div class="flag-list">${g.flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`:''}
+        <div class="stat-row"><span class="stat-label">Activity Score</span><span class="stat-val" style="color:var(--accent);font-weight:700;">${g.activity_score}/100</span></div>
+        ${g.top_languages && g.top_languages.length?`<div class="stat-row"><span class="stat-label">Top Languages</span><span class="stat-val">${g.top_languages.slice(0,3).join(', ')}</span></div>`:''}
+      ` : `
+        <p style="font-size:12px;color:${gColor};margin-top:6px;line-height:1.5;">
+          ${g.unreachable ? '⏱ Network timeout — profile may be valid. Check manually at:<br>' : '✗ Profile not found.<br>'}
+          ${g.username ? `<a href="https://github.com/${g.username}" target="_blank" style="color:var(--accent);">github.com/${g.username}</a>` : ''}
+        </p>`}
+      ${g.flags && g.flags.length?`<div class="flag-list">${g.flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`:''}
     </div>`;
+  }
 
+  // ── LinkedIn ───────────────────────────────────────────────────────────
   const li = v.linkedin;
-  if (li) html += `
+  if (li) {
+    const liIcon  = li.profile_found ? (li.blocked ? '🔒' : '✓') : '⚠';
+    const liColor = li.profile_found ? 'var(--green)' : 'var(--amber)';
+    const liStatus = li.blocked ? 'Exists (scraping blocked)' : li.profile_found ? 'Accessible' : 'Not confirmed';
+    html += `
     <div class="vcard">
       <div class="vcard-icon">💼</div>
-      <div class="vcard-title">LinkedIn ${li.profile_found?'✓':'⚠'}</div>
-      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-val">${li.profile_found?'Accessible':'Not confirmed'}</span></div>
-      ${li.profile_url?`<div class="stat-row"><span class="stat-label">URL</span><span class="stat-val" style="font-size:10.5px;word-break:break-all;">${li.profile_url.replace('https://','')}</span></div>`:''}
-      <p style="font-size:11.5px;color:var(--text-3);margin-top:9px;line-height:1.5;">${li.summary}</p>
-      ${li.flags.length?`<div class="flag-list">${li.flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`:''}
+      <div class="vcard-title" style="color:${liColor}">LinkedIn ${liIcon}</div>
+      <div class="stat-row"><span class="stat-label">Status</span><span class="stat-val">${liStatus}</span></div>
+      ${li.profile_url?`<div class="stat-row"><span class="stat-label">URL</span><span class="stat-val"><a href="${li.profile_url}" target="_blank" style="color:var(--accent);font-size:10.5px;word-break:break-all;text-decoration:none;">${li.profile_url.replace('https://','')}</a></span></div>`:''}
+      ${li.blocked ? `<p style="font-size:11px;color:var(--text-3);margin-top:8px;line-height:1.5;">LinkedIn blocks all automated checks (HTTP 999). This is normal — verify manually.</p>` : ''}
+      ${li.flags && li.flags.length?`<div class="flag-list">${li.flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`:''}
     </div>`;
+  }
 
-  html += '</div>';
+  html += '</div>';  // close verify-grid for github+linkedin
+
+  // ── LeetCode ───────────────────────────────────────────────────────────
+  const lc = v.leetcode;
+  if (lc) {
+    const hasRealData = lc.profile_found && !lc.server_blocked && lc.total_solved > 0;
+    const lcColor = hasRealData
+      ? (lc.activity_score >= 70 ? 'var(--green)' : lc.activity_score >= 40 ? 'var(--amber)' : 'var(--text-2)')
+      : 'var(--amber)';
+    const lcBadge = hasRealData
+      ? `<span style="font-family:var(--font-m);color:${lcColor};font-size:16px;font-weight:700;">${lc.activity_score}/100</span>`
+      : lc.server_blocked
+        ? `<span style="font-size:12px;color:var(--amber);">🔗 Link Provided ✓</span>`
+        : `<span style="font-size:12px;color:var(--red);">✗ Not found</span>`;
+
+    html += `
+    <div class="card" style="margin-top:14px;">
+      <div class="card-head">
+        <span class="card-title">🧩 LeetCode</span>
+        ${lcBadge}
+      </div>
+      <div class="card-body">
+        ${hasRealData ? `
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+            <div style="text-align:center;padding:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);">
+              <div style="font-family:var(--font-d);font-size:22px;color:var(--text);">${lc.total_solved}</div>
+              <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-top:2px;">Total</div>
+            </div>
+            <div style="text-align:center;padding:10px;background:var(--green-dim);border:1px solid rgba(74,222,128,.2);border-radius:var(--r);">
+              <div style="font-family:var(--font-d);font-size:22px;color:var(--green);">${lc.easy_solved}</div>
+              <div style="font-size:10px;color:var(--green);opacity:.7;text-transform:uppercase;letter-spacing:.8px;margin-top:2px;">Easy</div>
+            </div>
+            <div style="text-align:center;padding:10px;background:var(--amber-dim);border:1px solid rgba(251,191,36,.2);border-radius:var(--r);">
+              <div style="font-family:var(--font-d);font-size:22px;color:var(--amber);">${lc.medium_solved}</div>
+              <div style="font-size:10px;color:var(--amber);opacity:.7;text-transform:uppercase;letter-spacing:.8px;margin-top:2px;">Medium</div>
+            </div>
+            <div style="text-align:center;padding:10px;background:var(--red-dim);border:1px solid rgba(248,113,113,.2);border-radius:var(--r);">
+              <div style="font-family:var(--font-d);font-size:22px;color:var(--red);">${lc.hard_solved}</div>
+              <div style="font-size:10px;color:var(--red);opacity:.7;text-transform:uppercase;letter-spacing:.8px;margin-top:2px;">Hard</div>
+            </div>
+          </div>
+          ${lc.global_ranking ? `<div class="stat-row"><span class="stat-label">Global Ranking</span><span class="stat-val" style="color:var(--accent);">#${lc.global_ranking.toLocaleString()}</span></div>` : ''}
+        ` : `
+          <div style="padding:10px 0 6px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">🔗</span>
+            <div>
+              <div style="font-size:13px;font-weight:500;color:var(--text);">Profile link found in resume</div>
+              <div style="font-size:11.5px;color:var(--text-3);margin-top:2px;">Server-side API checks are blocked by LeetCode. Click the link below to view manually.</div>
+            </div>
+          </div>
+        `}
+        <div class="stat-row" style="margin-top:${hasRealData?'0':'8px'};">
+          <span class="stat-label">Profile URL</span>
+          <span class="stat-val"><a href="${lc.profile_url}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11.5px;">${lc.profile_url}</a></span>
+        </div>
+        <div style="margin-top:10px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);">
+          <div style="font-size:11px;color:var(--text-3);line-height:1.6;">${lc.platform_description}</div>
+        </div>
+        ${lc.flags && lc.flags.length?`<div class="flag-list" style="margin-top:10px;">${lc.flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  // ── Other profiles (Kaggle, HackerRank, etc.) ─────────────────────────
+  if (v.other_profiles && v.other_profiles.length > 0) {
+    html += `<div style="margin-top:14px;">`;
+    for (const op of v.other_profiles) {
+      const hasReal = op.profile_found && !op.server_blocked && op.activity_score > 0;
+      const opBadge = hasReal
+        ? `<span style="font-size:12px;color:var(--green);">✓ Verified</span>`
+        : op.server_blocked || op.profile_found
+          ? `<span style="font-size:12px;color:var(--amber);">🔗 Link Provided ✓</span>`
+          : `<span style="font-size:12px;color:var(--red);">✗ Not found (404)</span>`;
+
+      const platformIcons = {
+        'Kaggle':'📊','HackerRank':'💻','CodeChef':'👨‍🍳',
+        'Codeforces':'⚔️','StackOverflow':'📚','Medium':'✍️',
+        'GitLab':'🦊','Behance':'🎨','Dribbble':'🏀',
+      };
+      const icon = platformIcons[op.platform] || '🔗';
+
+      html += `
+      <div class="card" style="margin-bottom:10px;">
+        <div class="card-head">
+          <span class="card-title">${icon} ${op.platform}</span>
+          ${opBadge}
+        </div>
+        <div class="card-body">
+          ${(op.server_blocked || (!op.profile_found && !op.server_blocked === false)) && !hasReal ? `
+            <div style="padding:8px 0 10px;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:18px;">🔗</span>
+              <div style="font-size:11.5px;color:var(--text-3);line-height:1.5;">
+                Profile link found in resume. ${op.platform} blocks server-side checks — click the link below to view.
+              </div>
+            </div>` : ''}
+          <div class="stat-row">
+            <span class="stat-label">URL</span>
+            <span class="stat-val"><a href="${op.url}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11px;">${op.url}</a></span>
+          </div>
+          ${op.username ? `<div class="stat-row"><span class="stat-label">Username</span><span class="stat-val">@${op.username}</span></div>` : ''}
+          <div style="margin-top:10px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);">
+            <div style="font-size:11.5px;color:var(--text-2);font-weight:500;margin-bottom:5px;">About ${op.platform}</div>
+            <div style="font-size:11px;color:var(--text-3);line-height:1.6;">${op.platform_description}</div>
+          </div>
+          ${op.highlights && op.highlights.length ? `
+            <div style="margin-top:8px;">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-3);margin-bottom:6px;">Profile insights</div>
+              ${op.highlights.slice(0,3).map(h=>`
+                <div style="display:flex;gap:7px;align-items:flex-start;font-size:12px;color:var(--text-2);margin-bottom:5px;line-height:1.5;">
+                  <span style="color:var(--accent);flex-shrink:0;">▸</span><span>${h}</span>
+                </div>`).join('')}
+            </div>` : ''}
+          ${op.flags && op.flags.length?`<div class="flag-list" style="margin-top:8px;">${op.flags.map(f=>`<div class="flag"><span>⚠</span>${f}</div>`).join('')}</div>`:''}
+        </div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
   el.innerHTML = html;
 }
 
