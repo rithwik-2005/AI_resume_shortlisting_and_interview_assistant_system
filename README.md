@@ -62,7 +62,6 @@ AI_resume_shortlisting_and_interview_assistant_system/
 ├── README.md
 ├── SYSTEM_DESIGN.md              ← Full architecture + diagrams
 ├── docker-compose.yml
-├── .env.example
 │
 ├── docs/
 │   └── diagrams/                 ← 5 architecture diagrams (PNG)
@@ -87,10 +86,8 @@ AI_resume_shortlisting_and_interview_assistant_system/
 │
 ├── frontend/
 │   └── index.html                ← Full UI (no build step — served by FastAPI)
-│
-└── samples/
-    ├── sample_resume.txt         ← Test resume
-    └── sample_jd.txt             ← Test job description
+
+
 ```
 
 ---
