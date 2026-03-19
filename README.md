@@ -25,7 +25,7 @@ Everything streams live to the UI as it completes — no waiting for the full pi
 
 ## Live Demo
 
-**URL:** https://ai-resume-assistant.onrender.com
+**URL:** https://ai-resume-shortlisting-and-interview.onrender.com
 
 > First load may take 30–60 seconds on the free tier (cold start wake-up)
 
